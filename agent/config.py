@@ -1,7 +1,11 @@
 import os
+import logging
 import secrets
 from dataclasses import dataclass, field
 from typing import List, Optional
+from urllib.parse import urlparse, urlunparse
+
+logger = logging.getLogger(__name__)
 
 
 def _as_bool(value: Optional[str], default: bool = False) -> bool:
@@ -20,6 +24,29 @@ def _split_csv(value: Optional[str]) -> List[str]:
         if item:
             parts.append(item)
     return parts
+
+
+def mask_sensitive_url(url: Optional[str]) -> Optional[str]:
+    """Mask password in URLs for safe logging."""
+    if not url:
+        return url
+    try:
+        parsed = urlparse(url)
+        if parsed.password:
+            hostname = parsed.hostname or ""
+            if ":" in hostname:
+                hostname = f"[{hostname}]"
+            if parsed.port:
+                hostname = f"{hostname}:{parsed.port}"
+            if parsed.username:
+                hostname = f"{parsed.username}:******@{hostname}"
+            else:
+                hostname = f"******@{hostname}"
+            masked = parsed._replace(netloc=hostname)
+            return urlunparse(masked)
+    except Exception:
+        logger.warning("Failed to mask sensitive URL; raw URL will be used.")
+    return url
 
 
 @dataclass
