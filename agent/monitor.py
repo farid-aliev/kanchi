@@ -1,6 +1,7 @@
 """Simplified Celery event monitor."""
 
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional
 
@@ -167,41 +168,47 @@ class CeleryEventMonitor:
         return self.workers.copy()
 
     def start_monitoring(self):
-        """Start monitoring Celery events."""
+        """Start monitoring Celery events with automatic reconnection."""
         logger.info(f"Starting Celery event monitor - Broker: {mask_sensitive_url(self.broker_url)}")
 
         self.state = self.app.events.State()
+        max_delay = 60
+        delay = 1
 
-        try:
-            with self.app.connection() as connection:
-                handlers = {
-                    EventType.TASK_SENT.value: self._handle_task_event,
-                    EventType.TASK_RECEIVED.value: self._handle_task_event,
-                    EventType.TASK_STARTED.value: self._handle_task_event,
-                    EventType.TASK_SUCCEEDED.value: self._handle_task_event,
-                    EventType.TASK_FAILED.value: self._handle_task_event,
-                    EventType.TASK_RETRIED.value: self._handle_task_event,
-                    EventType.TASK_REVOKED.value: self._handle_task_event,
-                    EventType.WORKER_ONLINE.value: lambda event: self._handle_worker_event(
-                        event, EventType.WORKER_ONLINE.value
-                    ),
-                    EventType.WORKER_OFFLINE.value: lambda event: self._handle_worker_event(
-                        event, EventType.WORKER_OFFLINE.value
-                    ),
-                    EventType.WORKER_HEARTBEAT.value: lambda event: self._handle_worker_event(
-                        event, EventType.WORKER_HEARTBEAT.value
-                    ),
-                    EventType.TASK_PROGRESS.value: self._handle_progress_event,
-                    EventType.TASK_STEPS.value: self._handle_steps_event,
-                }
+        while True:
+            try:
+                with self.app.connection() as connection:
+                    handlers = {
+                        EventType.TASK_SENT.value: self._handle_task_event,
+                        EventType.TASK_RECEIVED.value: self._handle_task_event,
+                        EventType.TASK_STARTED.value: self._handle_task_event,
+                        EventType.TASK_SUCCEEDED.value: self._handle_task_event,
+                        EventType.TASK_FAILED.value: self._handle_task_event,
+                        EventType.TASK_RETRIED.value: self._handle_task_event,
+                        EventType.TASK_REVOKED.value: self._handle_task_event,
+                        EventType.WORKER_ONLINE.value: lambda event: self._handle_worker_event(
+                            event, EventType.WORKER_ONLINE.value
+                        ),
+                        EventType.WORKER_OFFLINE.value: lambda event: self._handle_worker_event(
+                            event, EventType.WORKER_OFFLINE.value
+                        ),
+                        EventType.WORKER_HEARTBEAT.value: lambda event: self._handle_worker_event(
+                            event, EventType.WORKER_HEARTBEAT.value
+                        ),
+                        EventType.TASK_PROGRESS.value: self._handle_progress_event,
+                        EventType.TASK_STEPS.value: self._handle_steps_event,
+                    }
 
-                recv = self.app.events.Receiver(connection, handlers=handlers)
+                    recv = self.app.events.Receiver(connection, handlers=handlers)
 
-                logger.info("Monitoring Celery events... Press Ctrl+C to stop")
-                recv.capture(limit=None, timeout=None, wakeup=True)
+                    logger.info("Monitoring Celery events... Press Ctrl+C to stop")
+                    delay = 1  # reset backoff on successful connection
+                    recv.capture(limit=None, timeout=None, wakeup=True)
 
-        except KeyboardInterrupt:
-            logger.info("Monitoring stopped by user")
-        except Exception as e:
-            logger.error(f"Error in event monitoring: {e}", exc_info=True)
-            raise
+            except KeyboardInterrupt:
+                logger.info("Monitoring stopped by user")
+                return
+            except Exception as e:
+                logger.error(f"Broker connection lost: {e}. Reconnecting in {delay}s...", exc_info=True)
+                time.sleep(delay)
+                delay = min(delay * 2, max_delay)
