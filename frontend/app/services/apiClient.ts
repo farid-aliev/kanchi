@@ -355,6 +355,15 @@ class ApiService {
     return response.data
   }
 
+  // Queue-related endpoints
+  async getQueues(): Promise<{ name: string; pending: number }[]> {
+    const response = await this.api.request({
+      path: '/api/queues',
+      method: 'GET'
+    })
+    return response.data
+  }
+
   // Health check
   async healthCheck(): Promise<any> {
     const response = await this.api.api.healthCheckApiHealthGet()

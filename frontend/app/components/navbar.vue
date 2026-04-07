@@ -108,6 +108,7 @@ const navItems = [
   { label: 'Dashboard', path: '/' },
   { label: 'Tasks', path: '/tasks' },
   { label: 'Workflows', path: '/workflows' },
+  { label: 'Queues', path: '/queues' },
 ]
 
 const isActive = (path: string) => {
