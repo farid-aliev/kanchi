@@ -25,6 +25,7 @@ class WorkerHealthMonitor:
         self.check_interval = 15
         self.worker_timeout = 30
         self.orphan_grace_period = 2
+        self.max_orphan_broadcasts_per_sweep = 50
 
     def start(self):
         """Start the health monitor in a background thread."""
@@ -104,8 +105,14 @@ class WorkerHealthMonitor:
                 )
 
                 if orphaned_tasks:
+                    to_broadcast = orphaned_tasks[: self.max_orphan_broadcasts_per_sweep]
+                    if len(orphaned_tasks) > len(to_broadcast):
+                        logger.warning(
+                            f"Orphaned {len(orphaned_tasks)} tasks but only broadcasting "
+                            f"{len(to_broadcast)} to avoid flooding WS clients"
+                        )
                     orphan_service.broadcast_orphan_events(
-                        orphaned_tasks, orphaned_at, self.event_handler.connection_manager
+                        to_broadcast, orphaned_at, self.event_handler.connection_manager
                     )
 
         except Exception as e:

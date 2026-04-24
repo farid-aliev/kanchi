@@ -123,6 +123,6 @@ class OrphanDetectionService:
         """
         orphan_events = self.create_orphan_events(orphaned_tasks, orphaned_at)
 
+        logger.info(f"Broadcasting {len(orphan_events)} orphan events")
         for orphan_event in orphan_events:
-            logger.info(f"Broadcasting orphan event for task {orphan_event.task_id}")
             connection_manager.queue_broadcast(orphan_event)

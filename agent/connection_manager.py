@@ -28,6 +28,7 @@ class ConnectionManager:
             logger.info("Background broadcaster started")
 
     async def _background_broadcaster(self):
+        processed_since_yield = 0
         while self._running:
             try:
                 try:
@@ -42,6 +43,11 @@ class ConnectionManager:
                         await self._broadcast_worker_event(data)
                     elif message_type == "progress":
                         await self._broadcast_progress_event(data)
+
+                    processed_since_yield += 1
+                    if processed_since_yield >= 10:
+                        processed_since_yield = 0
+                        await asyncio.sleep(0)
 
                 except asyncio.TimeoutError:
                     continue
@@ -123,7 +129,10 @@ class ConnectionManager:
                     if not self._should_send_to_client(event, filters):
                         continue
 
-                await connection.send_text(message)
+                await asyncio.wait_for(connection.send_text(message), timeout=2.0)
+            except asyncio.TimeoutError:
+                logger.warning("Broadcast send timed out; dropping slow client")
+                disconnected.append(connection)
             except Exception as e:
                 logger.error(f"Error broadcasting to client: {e}")
                 disconnected.append(connection)
